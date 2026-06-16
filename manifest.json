@@ -1,0 +1,8 @@
+{
+  "name": "GLB 3D Frame Preview",
+  "id": "glb-3d-frame-preview-local",
+  "api": "1.0.0",
+  "main": "dist/code.js",
+  "ui": "dist/ui.html",
+  "editorType": ["figma"]
+}
