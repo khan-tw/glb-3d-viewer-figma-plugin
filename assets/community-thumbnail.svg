@@ -1,0 +1,72 @@
+<svg width="1920" height="1080" viewBox="0 0 1920 1080" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="120" y1="80" x2="1780" y2="980" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0B1118"/>
+      <stop offset="1" stop-color="#162531"/>
+    </linearGradient>
+    <linearGradient id="panel" x1="300" y1="180" x2="1620" y2="900" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#202A34"/>
+      <stop offset="1" stop-color="#171F27"/>
+    </linearGradient>
+    <linearGradient id="hero" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#D6F7E9"/>
+      <stop offset="1" stop-color="#80D4B2"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1920" height="1080" fill="url(#bg)"/>
+  <rect x="84" y="72" width="1752" height="936" rx="32" fill="#10161C" stroke="#2B3640" stroke-width="2"/>
+
+  <rect x="120" y="120" width="1110" height="840" rx="24" fill="url(#panel)"/>
+  <rect x="1268" y="120" width="532" height="840" rx="24" fill="#1B232B"/>
+
+  <rect x="168" y="180" width="1014" height="612" rx="20" fill="#0D1318" stroke="#33414E" stroke-width="2"/>
+  <path d="M168 180H1182V792H168Z" fill="#0F151B"/>
+
+  <g opacity="0.42">
+    <path d="M168 246H1182" stroke="#24303A"/>
+    <path d="M168 312H1182" stroke="#24303A"/>
+    <path d="M168 378H1182" stroke="#24303A"/>
+    <path d="M168 444H1182" stroke="#24303A"/>
+    <path d="M168 510H1182" stroke="#24303A"/>
+    <path d="M168 576H1182" stroke="#24303A"/>
+    <path d="M168 642H1182" stroke="#24303A"/>
+    <path d="M168 708H1182" stroke="#24303A"/>
+    <path d="M240 180V792" stroke="#24303A"/>
+    <path d="M312 180V792" stroke="#24303A"/>
+    <path d="M384 180V792" stroke="#24303A"/>
+    <path d="M456 180V792" stroke="#24303A"/>
+    <path d="M528 180V792" stroke="#24303A"/>
+    <path d="M600 180V792" stroke="#24303A"/>
+    <path d="M672 180V792" stroke="#24303A"/>
+    <path d="M744 180V792" stroke="#24303A"/>
+    <path d="M816 180V792" stroke="#24303A"/>
+    <path d="M888 180V792" stroke="#24303A"/>
+    <path d="M960 180V792" stroke="#24303A"/>
+    <path d="M1032 180V792" stroke="#24303A"/>
+    <path d="M1104 180V792" stroke="#24303A"/>
+  </g>
+
+  <g>
+    <ellipse cx="694" cy="648" rx="190" ry="58" fill="#0A0F14"/>
+    <path d="M700 352L845 438V610L700 696L555 610V438L700 352Z" fill="url(#hero)"/>
+    <path d="M700 352V696" stroke="#F6FFFB" stroke-opacity="0.7" stroke-width="3"/>
+    <path d="M555 438L700 520L845 438" stroke="#F6FFFB" stroke-opacity="0.7" stroke-width="3"/>
+    <path d="M555 610L700 520L845 610" stroke="#4D9F7E" stroke-width="3"/>
+  </g>
+
+  <rect x="1308" y="176" width="452" height="52" rx="12" fill="#11181F"/>
+  <rect x="1308" y="250" width="452" height="78" rx="16" fill="#11181F"/>
+  <rect x="1308" y="352" width="452" height="116" rx="16" fill="#11181F"/>
+  <rect x="1308" y="492" width="452" height="150" rx="16" fill="#11181F"/>
+  <rect x="1308" y="666" width="452" height="112" rx="16" fill="#11181F"/>
+  <rect x="1308" y="802" width="220" height="44" rx="12" fill="#24342F"/>
+  <rect x="1540" y="802" width="220" height="44" rx="12" fill="#11181F"/>
+
+  <text x="168" y="880" fill="#F3F7FA" font-family="Inter, Arial, sans-serif" font-size="64" font-weight="700">GLB 3D Frame Preview</text>
+  <text x="168" y="944" fill="#AAB7C3" font-family="Inter, Arial, sans-serif" font-size="28">Preview local GLB models in Figma and tune lighting, materials, framing, and sync output.</text>
+
+  <circle cx="156" cy="152" r="18" fill="#293540"/>
+  <circle cx="210" cy="152" r="18" fill="#293540"/>
+  <circle cx="264" cy="152" r="18" fill="#293540"/>
+</svg>
