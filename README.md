@@ -100,6 +100,18 @@ npm run build
 
 The Figma manifest points to the built files in `dist/`.
 
+## Support
+
+Use GitHub issues for bug reports and feature requests:
+
+`https://github.com/khan-tw/glb-3d-viewer-figma-plugin/issues`
+
+## Privacy
+
+This plugin does not make external network requests. It works with local `.glb` files selected by the user, reads the currently selected Figma frame when syncing a preview, and stores the last exported settings in Figma client storage.
+
+Full details are available in `PRIVACY.md`.
+
 ## License
 
 MIT
