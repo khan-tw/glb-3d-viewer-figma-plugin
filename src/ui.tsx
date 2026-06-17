@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { CloudFog, Download, FileJson, FolderOpen, Image, Layers, Palette, RotateCcw, Sun } from "lucide-react";
+import { CloudFog, Download, FileJson, FolderOpen, Image, Layers, Palette, Redo2, RotateCcw, Sun, Undo2, Upload } from "lucide-react";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader.js";
@@ -130,6 +130,14 @@ function blobToBytes(blob: Blob) {
   return blob.arrayBuffer().then((buffer) => new Uint8Array(buffer));
 }
 
+function cloneSettings(settings: ViewerSettings) {
+  return JSON.parse(JSON.stringify(settings)) as ViewerSettings;
+}
+
+function areSettingsEqual(a: ViewerSettings, b: ViewerSettings) {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
 function getMaterialNames(material: THREE.Material | THREE.Material[] | undefined) {
   if (!material) return "";
   const materials = Array.isArray(material) ? material : [material];
@@ -139,6 +147,7 @@ function getMaterialNames(material: THREE.Material | THREE.Material[] | undefine
 function App() {
   const mountRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const jsonInputRef = useRef<HTMLInputElement | null>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
@@ -151,12 +160,17 @@ function App() {
   const fillLightRef = useRef<THREE.DirectionalLight | null>(null);
   const rimLightRef = useRef<THREE.DirectionalLight | null>(null);
   const environmentRef = useRef<THREE.Texture | null>(null);
+  const exportEnvironmentRef = useRef<THREE.Texture | null>(null);
   const originalMaterialsRef = useRef<Map<THREE.Mesh, THREE.Material | THREE.Material[]>>(new Map());
   const modelFloorRefs = useRef<Array<{ object: THREE.Object3D; visible: boolean }>>([]);
   const frameRef = useRef<number | null>(null);
   const objectUrlRef = useRef<string | null>(null);
   const syncTimerRef = useRef<number | null>(null);
+  const toastTimerRef = useRef<number | null>(null);
   const syncInFlightRef = useRef(false);
+  const settingsRef = useRef<ViewerSettings>(DEFAULT_SETTINGS);
+  const undoStackRef = useRef<ViewerSettings[]>([]);
+  const redoStackRef = useRef<ViewerSettings[]>([]);
   const dragRef = useRef<{
     active: boolean;
     pointerId: number | null;
@@ -186,17 +200,117 @@ function App() {
     startHeight: 0
   });
 
-  const [settings, setSettings] = useState<ViewerSettings>(DEFAULT_SETTINGS);
+  const [settings, setSettingsState] = useState<ViewerSettings>(DEFAULT_SETTINGS);
   const [loadState, setLoadState] = useState<LoadState>("idle");
   const [error, setError] = useState<string | null>(null);
   const [syncPreview, setSyncPreview] = useState(true);
   const [targetFrame, setTargetFrame] = useState<{ name: string; width: number; height: number } | null>(null);
   const [windowPreset, setWindowPreset] = useState<WindowPreset>("default");
+  const [canUndo, setCanUndo] = useState(false);
+  const [canRedo, setCanRedo] = useState(false);
+  const [toast, setToast] = useState<{ message: string } | null>(null);
+  const [jsonDraft, setJsonDraft] = useState(() => JSON.stringify(DEFAULT_SETTINGS, null, 2));
 
   const exportJson = useMemo(() => JSON.stringify(settings, null, 2), [settings]);
   const previewAspectRatio = targetFrame
     ? `${Math.max(1, targetFrame.width)} / ${Math.max(1, targetFrame.height)}`
     : "16 / 9";
+
+  function syncHistoryAvailability() {
+    setCanUndo(undoStackRef.current.length > 0);
+    setCanRedo(redoStackRef.current.length > 0);
+  }
+
+  function showToast(message: string) {
+    if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
+    setToast({ message });
+    toastTimerRef.current = window.setTimeout(() => {
+      setToast(null);
+      toastTimerRef.current = null;
+    }, 2200);
+  }
+
+  function setSettings(
+    value: React.SetStateAction<ViewerSettings>,
+    options?: { recordHistory?: boolean; clearRedo?: boolean }
+  ) {
+    const current = settingsRef.current;
+    const next = typeof value === "function" ? (value as (prevState: ViewerSettings) => ViewerSettings)(current) : value;
+    if (areSettingsEqual(current, next)) return;
+
+    if (options?.recordHistory !== false) {
+      undoStackRef.current.push(cloneSettings(current));
+      if (undoStackRef.current.length > 100) undoStackRef.current.shift();
+    }
+
+    if (options?.clearRedo !== false) {
+      redoStackRef.current = [];
+    }
+
+    settingsRef.current = cloneSettings(next);
+    setSettingsState(next);
+    syncHistoryAvailability();
+  }
+
+  function applyImportedSettings(next: ViewerSettings) {
+    setSettings((current) => ({
+      ...cloneSettings(next),
+      fileName: current.fileName
+    }));
+  }
+
+  function undoSettings() {
+    const previous = undoStackRef.current.pop();
+    if (!previous) return;
+    redoStackRef.current.push(cloneSettings(settingsRef.current));
+    settingsRef.current = cloneSettings(previous);
+    setSettingsState(previous);
+    syncHistoryAvailability();
+    showToast("Undid last change.");
+  }
+
+  function redoSettings() {
+    const next = redoStackRef.current.pop();
+    if (!next) return;
+    undoStackRef.current.push(cloneSettings(settingsRef.current));
+    settingsRef.current = cloneSettings(next);
+    setSettingsState(next);
+    syncHistoryAvailability();
+    showToast("Redid last change.");
+  }
+
+  async function writeToClipboard(text: string) {
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+        return true;
+      }
+    } catch {
+      // Fall through to selection-based copy for plugin environments.
+    }
+
+    const textarea = document.createElement("textarea");
+    textarea.value = text;
+    textarea.setAttribute("readonly", "true");
+    textarea.style.position = "fixed";
+    textarea.style.opacity = "0";
+    textarea.style.pointerEvents = "none";
+    document.body.appendChild(textarea);
+    textarea.focus();
+    textarea.select();
+    textarea.setSelectionRange(0, textarea.value.length);
+    const copied = document.execCommand("copy");
+    document.body.removeChild(textarea);
+    return copied;
+  }
+
+  useEffect(() => {
+    settingsRef.current = cloneSettings(settings);
+  }, [settings]);
+
+  useEffect(() => {
+    setJsonDraft(exportJson);
+  }, [exportJson]);
 
   useEffect(() => {
     const receiveMessage = (event: MessageEvent) => {
@@ -294,6 +408,10 @@ function App() {
     scene.environmentIntensity = DEFAULT_SETTINGS.environment.intensity;
     pmremGenerator.dispose();
 
+    const exportPmremGenerator = new THREE.PMREMGenerator(exportRenderer);
+    exportEnvironmentRef.current = exportPmremGenerator.fromScene(new RoomEnvironment(), 0.04).texture;
+    exportPmremGenerator.dispose();
+
     const resize = () => {
       const rect = mount.getBoundingClientRect();
       const width = Math.max(1, rect.width);
@@ -320,10 +438,12 @@ function App() {
       exportRenderer.dispose();
       renderer.dispose();
       environmentRef.current?.dispose();
+      exportEnvironmentRef.current?.dispose();
       renderer.domElement.remove();
       if (frameRef.current) cancelAnimationFrame(frameRef.current);
       if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
       if (syncTimerRef.current) window.clearTimeout(syncTimerRef.current);
+      if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
     };
   }, []);
 
@@ -756,8 +876,11 @@ function App() {
     exportCamera.aspect = renderWidth / renderHeight;
     exportCamera.updateProjectionMatrix();
     renderer.setSize(renderWidth, renderHeight, false);
-    renderer.render(scene, exportCamera);
+    const previewEnvironment = scene.environment;
     try {
+      scene.environment = settings.environment.mode === "studio" ? exportEnvironmentRef.current : null;
+      renderer.render(scene, exportCamera);
+      scene.environment = previewEnvironment;
       const blob = await new Promise<Blob | null>((resolve) => {
         renderer.domElement.toBlob(resolve, "image/png");
       });
@@ -770,6 +893,7 @@ function App() {
         settings
       });
     } finally {
+      scene.environment = previewEnvironment;
       syncInFlightRef.current = false;
     }
   }
@@ -833,20 +957,56 @@ function App() {
   }
 
   async function copyJson() {
-    await navigator.clipboard.writeText(exportJson);
-    postPluginMessage("export-settings", settings);
-    postPluginMessage("notify", { text: "Parameters copied as JSON." });
+    const copied = await writeToClipboard(jsonDraft);
+    if (!copied) {
+      showToast("Copy failed.");
+      return;
+    }
+    postPluginMessage("export-settings", { settings });
+    showToast("JSON copied.");
   }
 
   function downloadJson() {
-    const blob = new Blob([exportJson], { type: "application/json" });
+    const blob = new Blob([jsonDraft], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
     link.download = `${settings.fileName?.replace(/\.glb$/i, "") || "glb-viewer"}-settings.json`;
     link.click();
     URL.revokeObjectURL(url);
-    postPluginMessage("export-settings", settings);
+    postPluginMessage("export-settings", { settings });
+  }
+
+  async function importJsonFile(file: File) {
+    try {
+      const text = await file.text();
+      setJsonDraft(text);
+      const parsed = JSON.parse(text) as ViewerSettings;
+      const importedSettings = {
+        ...cloneSettings(parsed),
+        fileName: settingsRef.current.fileName
+      };
+      applyImportedSettings(importedSettings);
+      postPluginMessage("export-settings", { settings: importedSettings });
+      showToast("JSON imported.");
+    } catch {
+      showToast("Invalid JSON file.");
+    }
+  }
+
+  function applyJsonDraft() {
+    try {
+      const parsed = JSON.parse(jsonDraft) as ViewerSettings;
+      const nextSettings = {
+        ...cloneSettings(parsed),
+        fileName: settingsRef.current.fileName
+      };
+      applyImportedSettings(nextSettings);
+      postPluginMessage("export-settings", { settings: nextSettings });
+      showToast("JSON applied.");
+    } catch {
+      showToast("Invalid JSON.");
+    }
   }
 
   function resetSettings() {
@@ -864,10 +1024,12 @@ function App() {
       ...DEFAULT_SETTINGS,
       fileName: current.fileName
     }));
+    showToast("Settings reset.");
   }
 
   return (
     <main className="shell">
+      {toast && <div className="toast">{toast.message}</div>}
       <section className="preview-pane">
         <div className="section preview-section">
           <div className="section-title">
@@ -953,6 +1115,14 @@ function App() {
         <div className="section">
           <div className="section-title">
             <span>Window</span>
+            <div className="history-actions">
+              <button className="icon-button" type="button" title="Undo" onClick={undoSettings} disabled={!canUndo}>
+                <Undo2 size={16} />
+              </button>
+              <button className="icon-button" type="button" title="Redo" onClick={redoSettings} disabled={!canRedo}>
+                <Redo2 size={16} />
+              </button>
+            </div>
           </div>
           <div className="segmented-control segmented-control-wide">
             {WINDOW_PRESETS.map((item) => (
@@ -1477,11 +1647,38 @@ function App() {
             <span>Export</span>
             <FileJson size={16} />
           </div>
-          <textarea readOnly value={exportJson} />
+          <input
+            ref={jsonInputRef}
+            type="file"
+            accept=".json,application/json"
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              if (file) void importJsonFile(file);
+              event.currentTarget.value = "";
+            }}
+          />
+          <textarea
+            value={jsonDraft}
+            onChange={(event) => setJsonDraft(event.target.value)}
+            onKeyDown={(event) => {
+              if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+                event.preventDefault();
+                applyJsonDraft();
+              }
+            }}
+          />
           <div className="export-actions">
             <button type="button" onClick={copyJson}>
               <FileJson size={16} />
               Copy JSON
+            </button>
+            <button type="button" onClick={applyJsonDraft}>
+              <FileJson size={16} />
+              Apply JSON
+            </button>
+            <button type="button" onClick={() => jsonInputRef.current?.click()}>
+              <Upload size={16} />
+              Import JSON
             </button>
             <button type="button" onClick={downloadJson}>
               <Download size={16} />

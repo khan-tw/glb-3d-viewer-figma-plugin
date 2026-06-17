@@ -41,6 +41,11 @@ button:hover {
   background: #2a3036;
 }
 
+button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
 .shell {
   position: relative;
   display: grid;
@@ -214,6 +219,21 @@ button:hover {
   background: #181b1f;
 }
 
+.toast {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 40;
+  max-width: min(320px, calc(100vw - 32px));
+  padding: 10px 12px;
+  border: 1px solid #4c5f56;
+  border-radius: 8px;
+  color: #effaf4;
+  background: rgba(27, 49, 40, 0.96);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.28);
+}
+
 .section {
   display: flex;
   flex-direction: column;
@@ -274,6 +294,11 @@ button:hover {
   width: 30px;
   min-height: 30px;
   padding: 0;
+}
+
+.history-actions {
+  display: flex;
+  gap: 6px;
 }
 
 label {
