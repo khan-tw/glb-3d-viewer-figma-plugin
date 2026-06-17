@@ -44,8 +44,7 @@ figma.ui.onmessage = async (message) => {
   }
 
   if (message.type === "export-settings") {
-    await figma.clientStorage.setAsync("last-glb-viewer-settings", message.payload);
-    figma.notify("Viewer parameters saved in plugin storage.");
+    await figma.clientStorage.setAsync("last-glb-viewer-settings", message.payload?.settings ?? message.payload);
     return;
   }
 

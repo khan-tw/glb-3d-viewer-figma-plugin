@@ -25,7 +25,7 @@
     return targetFrame;
   }
   figma.ui.onmessage = async (message) => {
-    var _a, _b, _c;
+    var _a, _b, _c, _d, _e;
     const payload = (_a = message.payload) != null ? _a : {};
     if (message.type === "request-target-frame") {
       figma.ui.postMessage({
@@ -39,8 +39,7 @@
       return;
     }
     if (message.type === "export-settings") {
-      await figma.clientStorage.setAsync("last-glb-viewer-settings", message.payload);
-      figma.notify("Viewer parameters saved in plugin storage.");
+      await figma.clientStorage.setAsync("last-glb-viewer-settings", (_d = (_c = message.payload) == null ? void 0 : _c.settings) != null ? _d : message.payload);
       return;
     }
     if (message.type === "render-preview") {
@@ -63,7 +62,7 @@
           imageHash: image.hash
         }
       ];
-      frame.setPluginData("glbViewerSettings", JSON.stringify((_c = payload.settings) != null ? _c : {}));
+      frame.setPluginData("glbViewerSettings", JSON.stringify((_e = payload.settings) != null ? _e : {}));
       return;
     }
     if (message.type === "use-selected-frame") {
