@@ -1,0 +1,23 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import vm from 'node:vm';
+import { build } from 'esbuild';
+
+const ui = readFileSync(new URL('../src/ui.tsx', import.meta.url), 'utf8');
+const literal = ui.match(/const DEFAULT_SETTINGS: ViewerSettings = ([\s\S]*?);\n\ntype LoadState/)[1];
+const defaults = JSON.parse(JSON.stringify(vm.runInNewContext(`(${literal})`)));
+const bundled = await build({ entryPoints: [new URL('../src/settings-validation.ts', import.meta.url).pathname], bundle: true, write: false, format: 'cjs', platform: 'node' });
+const sandbox = { module: { exports: {} }, exports: {} };
+vm.runInNewContext(bundled.outputFiles[0].text, sandbox);
+const parse = text => sandbox.module.exports.parseViewerSettings(text, defaults);
+assert.equal(parse(JSON.stringify(defaults)).fov, 45);
+const cases = ['{}', 'null', '[]', '{', JSON.stringify({ ...defaults, fov: 0 }), JSON.stringify({ ...defaults, model: { ...defaults.model, scale: 0 } }), JSON.stringify({ ...defaults, material: { mode: 'invalid' } }), JSON.stringify({ ...defaults, light: { ...defaults.light, intensity: 1e308 } }), JSON.stringify({ ...defaults, fog: { ...defaults.fog, near: 10, far: 5 } }), JSON.stringify({ ...defaults, hemisphereLight: { ...defaults.hemisphereLight, skyColor: 'oops' } })];
+for (const value of cases) assert.throws(() => parse(value));
+const valid = parse(JSON.stringify({ ...defaults, material: { mode: 'clay' }, extra: 'ignored' }));
+assert.equal(valid.material.mode, 'clay');
+assert.equal(valid.extra, undefined);
+const readme = readFileSync(new URL('../README.md', import.meta.url), 'utf8');
+const documentedSettings = readme.match(/## Exported JSON shape[\s\S]*?```json\n([\s\S]*?)\n```/)?.[1];
+assert(documentedSettings, 'README must contain a reusable settings example');
+assert.equal(parse(documentedSettings).model.scale, 1);
+console.log('PASS: settings roundtrip; 10 malformed/incompatible presets rejected; supported material; unknown keys removed; README example imports.');

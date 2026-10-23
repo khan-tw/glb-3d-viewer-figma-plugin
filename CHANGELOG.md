@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.2.0 - October 23, 2026
+
+- Guide first use through Load a model, Adjust the preview, and Send to Figma.
+- Keep the main sync action visible in default and compact window sizes.
+- Group controls into Look, Position, Light, and More.
+- Make Live sync opt-in and disable it when changing the target frame.
+- Keep sync feedback pending until acknowledgement; retain the unsynced status
+  when the preview changes during an update.
+- Treat a preview drag as one undo action and prevent zero-scale models.
+- Keep the previous model when a replacement GLB cannot be opened.
+- Validate JSON presets before applying them and show recoverable errors inline.
+- Clarify transparent backgrounds, existing model floors, PNG fills, and JSON
+  settings export; improve keyboard focus and control labels.
+- Check the README settings example and prepare verified local release ZIPs.
+
 ## 1.1.0
 
 Published October 23, 2026 as Community Version 2.

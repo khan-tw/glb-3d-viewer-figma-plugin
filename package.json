@@ -1,6 +1,6 @@
 {
   "name": "glb-3d-viewer-figma-plugin",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "private": true,
   "description": "A Figma plugin for previewing GLB files with adjustable camera FOV and light position, built with React and WebGL.",
   "scripts": {
@@ -9,8 +9,9 @@
     "build:code": "esbuild src/code.ts --bundle --outfile=dist/code.js --format=iife --target=es2017",
     "dev": "vite build --watch",
     "typecheck": "tsc --noEmit",
-    "test": "npm run build:code && node scripts/check-plugin.mjs",
-    "sample:build": "node scripts/create-sample.mjs"
+    "test": "npm run build:code && node scripts/check-plugin.mjs && node scripts/check-settings.mjs",
+    "sample:build": "node scripts/create-sample.mjs",
+    "release:prepare": "npm run typecheck && npm test && npm run build && node scripts/package-release.mjs"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^5.0.0",

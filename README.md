@@ -14,13 +14,30 @@ without leaving Figma. Free, open source, and processed locally.
 1. Open the [Community plugin page](https://www.figma.com/community/plugin/1689584566677007084) and choose **Open in Figma**.
 2. Run **GLB 3D Frame Preview** and choose **Try sample model**, or import a local `.glb` file.
 3. Choose **Create New Frame**, or select a frame and choose **Use Selected Frame**.
-4. Adjust the view and lighting, then choose **Sync Frame**. Live sync updates it as you work.
+4. Adjust the view and lighting, then choose **Sync Frame**. Enable **Live sync** if you want automatic updates while you work.
 
-Version 1.1.0 is available as Community Version 2, published October 23, 2026.
+Version 1.2.0 is the current source release. The Community update is pending;
+its public page currently offers 1.1.0 as Community Version 2.
 Sync replaces the target frame's fills; use a dedicated frame for the render.
+
+### What's New in 1.2
+
+Version 1.2.0 organizes settings into **Look**, **Position**, **Light**,
+and **More**, keeps **Sync Frame** visible, and leaves **Live sync** off until
+you enable it. Switching the target frame turns Live sync off again.
+Use **More > Settings JSON** to copy, download, or reuse a preset. JSON presets
+do not contain the model or export a PNG; use **Sync Frame** for the render.
 
 [Download the original sample model](examples/studio-headphones.glb) and follow
 the [sample walkthrough](examples/README.md).
+
+Prebuilt plugin and sample ZIPs are available from
+[GitHub Releases](https://github.com/khan-tw/glb-3d-viewer-figma-plugin/releases).
+See the [ZIP installation guide](docs/INSTALL_FROM_ZIP.md) for local installation.
+
+[Open the Figma playground](https://www.figma.com/design/CxW8FvI0JErG3TNxrc3YGm/GLB-3D-Frame-Preview---Playground?node-id=1-5)
+for editable instructions, real example renders, and a separate practice frame.
+Duplicate the file into your drafts to try it yourself.
 
 No account or API key is required by the plugin. Models are processed locally.
 
@@ -59,6 +76,10 @@ The Figma canvas preview is a synchronized PNG render. Figma plugin APIs do not 
   "camera": {
     "position": { "x": 0, "y": 1.2, "z": 4 },
     "target": { "x": 0, "y": 0, "z": 0 }
+  },
+  "model": {
+    "scale": 1,
+    "rotation": { "x": 0, "y": 0, "z": 0 }
   },
   "light": {
     "type": "directional",
@@ -122,6 +143,14 @@ npm test
 ```
 
 The Figma manifest points to the built files in `dist/`.
+
+### Prepare Local Release Packages
+
+Run `npm run release:prepare` to check types, run tests, rebuild, and create
+verified plugin/sample ZIPs with SHA-256 checksums under the ignored `releases/`
+directory. Packaging does not push code, create a GitHub release, update Figma
+Community, or publish promotional drafts. Candidate builds must be reviewed
+before publication.
 
 ## Support
 

@@ -12,3 +12,6 @@ node_modules
 *.pfx
 .npm-cache/
 *.log
+
+# Local release candidates; publish only after review.
+releases/

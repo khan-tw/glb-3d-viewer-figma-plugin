@@ -7,6 +7,7 @@ import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import dracoDecoderSource from "three/examples/jsm/libs/draco/gltf/draco_decoder.js?raw";
 import type { ViewerSettings } from "./types";
+import { parseViewerSettings } from "./settings-validation";
 import "./styles.css";
 import sampleModelUrl from "../examples/studio-headphones.glb?inline";
 
@@ -78,7 +79,7 @@ type LoadState = "idle" | "loading" | "ready" | "error";
 type BackgroundMode = ViewerSettings["renderer"]["backgroundMode"];
 
 const BACKGROUNDS: Array<{ mode: BackgroundMode; label: string; color: string | null }> = [
-  { mode: "transparent", label: "Empty", color: null },
+  { mode: "transparent", label: "Transparent", color: null },
   { mode: "dark", label: "Dark", color: "#111315" },
   { mode: "light", label: "Light", color: "#f4f6f8" },
   { mode: "figma", label: "Figma", color: "#e5e5e5" },
@@ -169,6 +170,11 @@ function App() {
   const syncTimerRef = useRef<number | null>(null);
   const toastTimerRef = useRef<number | null>(null);
   const syncInFlightRef = useRef(false);
+  const syncTimeoutRef = useRef<number | null>(null);
+  const syncRevisionRef = useRef(0);
+  const revisionRef = useRef(0);
+  const lastSyncedRevisionRef = useRef(-1);
+  const historyGestureRef = useRef<{ recorded: boolean } | null>(null);
   const settingsRef = useRef<ViewerSettings>(DEFAULT_SETTINGS);
   const undoStackRef = useRef<ViewerSettings[]>([]);
   const redoStackRef = useRef<ViewerSettings[]>([]);
@@ -205,7 +211,11 @@ function App() {
   const [loadState, setLoadState] = useState<LoadState>("idle");
   const [error, setError] = useState<string | null>(null);
   const [syncStatus, setSyncStatus] = useState("Preview ready. Choose a frame to sync.");
-  const [syncPreview, setSyncPreview] = useState(true);
+  const [syncPreview, setSyncPreview] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [syncError, setSyncError] = useState(false);
+  const [activePanel, setActivePanel] = useState("look");
+  const [jsonError, setJsonError] = useState<string | null>(null);
   const [targetFrame, setTargetFrame] = useState<{ name: string; width: number; height: number } | null>(null);
   const [windowPreset, setWindowPreset] = useState<WindowPreset>("default");
   const [canUndo, setCanUndo] = useState(false);
@@ -215,8 +225,8 @@ function App() {
 
   const exportJson = useMemo(() => JSON.stringify(settings, null, 2), [settings]);
   const previewAspectRatio = targetFrame
-    ? `${Math.max(1, targetFrame.width)} / ${Math.max(1, targetFrame.height)}`
-    : "16 / 9";
+    ? Math.max(1, targetFrame.width) / Math.max(1, targetFrame.height)
+    : 4 / 3;
 
   function syncHistoryAvailability() {
     setCanUndo(undoStackRef.current.length > 0);
@@ -240,9 +250,10 @@ function App() {
     const next = typeof value === "function" ? (value as (prevState: ViewerSettings) => ViewerSettings)(current) : value;
     if (areSettingsEqual(current, next)) return;
 
-    if (options?.recordHistory !== false) {
+    if (options?.recordHistory !== false && !historyGestureRef.current?.recorded) {
       undoStackRef.current.push(cloneSettings(current));
       if (undoStackRef.current.length > 100) undoStackRef.current.shift();
+      if (historyGestureRef.current) historyGestureRef.current.recorded = true;
     }
 
     if (options?.clearRedo !== false) {
@@ -251,6 +262,8 @@ function App() {
 
     settingsRef.current = cloneSettings(next);
     setSettingsState(next);
+    revisionRef.current += 1;
+    setSyncError(false);
     setSyncStatus("Preview changed. Sync to update your frame.");
     syncHistoryAvailability();
   }
@@ -268,6 +281,9 @@ function App() {
     redoStackRef.current.push(cloneSettings(settingsRef.current));
     settingsRef.current = cloneSettings(previous);
     setSettingsState(previous);
+    revisionRef.current += 1;
+    setSyncError(false);
+    setSyncStatus("Preview changed. Sync to update your frame.");
     syncHistoryAvailability();
     showToast("Undid last change.");
   }
@@ -278,6 +294,9 @@ function App() {
     undoStackRef.current.push(cloneSettings(settingsRef.current));
     settingsRef.current = cloneSettings(next);
     setSettingsState(next);
+    revisionRef.current += 1;
+    setSyncError(false);
+    setSyncStatus("Preview changed. Sync to update your frame.");
     syncHistoryAvailability();
     showToast("Redid last change.");
   }
@@ -313,6 +332,7 @@ function App() {
 
   useEffect(() => {
     setJsonDraft(exportJson);
+    setJsonError(null);
   }, [exportJson]);
 
   useEffect(() => {
@@ -320,16 +340,28 @@ function App() {
       const message = event.data?.pluginMessage;
       if (message?.type === "target-frame") {
         setTargetFrame(message.frame);
+        revisionRef.current += 1;
+        setSyncError(false);
         setSyncStatus(message.frame ? "Frame selected. Ready to sync." : "Choose or create a frame to sync.");
       }
       if (message?.type === "sync-result") {
-        setSyncStatus(message.ok ? `Synced to ${message.frameName}.` : message.error);
+        if (syncTimeoutRef.current) window.clearTimeout(syncTimeoutRef.current);
+        syncInFlightRef.current = false;
+        setSyncing(false);
+        setSyncError(!message.ok);
+        if (message.ok) lastSyncedRevisionRef.current = syncRevisionRef.current;
+        setSyncStatus(message.ok
+          ? (revisionRef.current === syncRevisionRef.current ? `Synced to ${message.frameName}.` : "Preview changed. Sync to update your frame.")
+          : message.error);
       }
     };
 
     window.addEventListener("message", receiveMessage);
     postPluginMessage("request-target-frame");
-    return () => window.removeEventListener("message", receiveMessage);
+    return () => {
+      window.removeEventListener("message", receiveMessage);
+      if (syncTimeoutRef.current) window.clearTimeout(syncTimeoutRef.current);
+    };
   }, []);
 
   useEffect(() => {
@@ -557,13 +589,17 @@ function App() {
   }, [settings.renderer.backgroundMode, settings.renderer.showFloor]);
 
   useEffect(() => {
-    if (!syncPreview || loadState !== "ready") return;
+    if (!syncPreview || loadState !== "ready" || !targetFrame || syncing || syncError
+      || lastSyncedRevisionRef.current === revisionRef.current) return;
 
     if (syncTimerRef.current) window.clearTimeout(syncTimerRef.current);
     syncTimerRef.current = window.setTimeout(() => {
       void syncCanvasToFigmaFrame();
     }, 180);
-  }, [settings, syncPreview, loadState, targetFrame]);
+    return () => {
+      if (syncTimerRef.current) window.clearTimeout(syncTimerRef.current);
+    };
+  }, [settings, syncPreview, loadState, targetFrame, syncing, syncError]);
 
   async function loadSampleModel() {
     const base64 = sampleModelUrl.split(",")[1];
@@ -576,6 +612,11 @@ function App() {
     const camera = cameraRef.current;
     if (!scene || !camera) return;
 
+    if (!/\.glb$/i.test(file.name)) {
+      setError("Choose a .glb model file. Your current preview has not changed.");
+      return;
+    }
+
     setLoadState("loading");
     setError(null);
     setSyncStatus("Preview ready. Choose Sync Frame to update your frame.");
@@ -583,23 +624,19 @@ function App() {
     if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
     objectUrlRef.current = URL.createObjectURL(file);
 
-    if (modelRef.current) {
-      applyMaterialMode("original");
-      scene.remove(modelRef.current);
-      disposeObject(modelRef.current);
-      modelRef.current = null;
-      originalMaterialsRef.current.clear();
-      modelFloorRefs.current = [];
-    }
-
+    const dracoLoader = new InlineDRACOLoader();
     try {
       const loader = new GLTFLoader();
-      const dracoLoader = new InlineDRACOLoader();
       dracoLoader.setDecoderConfig({ type: "js" });
       dracoLoader.setWorkerLimit(2);
       loader.setDRACOLoader(dracoLoader);
       const gltf = await loader.loadAsync(objectUrlRef.current);
       const model = new THREE.Group();
+      if (modelRef.current) {
+        applyMaterialMode("original");
+        scene.remove(modelRef.current);
+        disposeObject(modelRef.current);
+      }
       originalMaterialsRef.current.clear();
       captureOriginalMaterials(gltf.scene);
       modelFloorRefs.current = detectModelFloorMeshes(gltf.scene);
@@ -622,13 +659,18 @@ function App() {
           position: { x: 0, y: 0, z: 4 },
           target: { x: 0, y: 0, z: 0 }
         }
-      }));
+      }), { recordHistory: false });
+      undoStackRef.current = [];
+      redoStackRef.current = [];
+      syncHistoryAvailability();
+      lastSyncedRevisionRef.current = -1;
       setLoadState("ready");
       postPluginMessage("notify", { text: `Loaded ${file.name}` });
+    } catch {
+      setLoadState(modelRef.current ? "ready" : "error");
+      setError("Could not open this GLB. Try exporting it again with embedded textures, or use the sample model. Your previous preview is kept.");
+    } finally {
       dracoLoader.dispose();
-    } catch (loadError) {
-      setLoadState("error");
-      setError(loadError instanceof Error ? loadError.message : "Unable to load this GLB file.");
     }
   }
 
@@ -808,7 +850,7 @@ function App() {
   }
 
   function updateModelScale(value: number) {
-    const scale = clamp(value, 0, 50);
+    const scale = clamp(value, 0.1, 50);
     setSettings((current) => ({ ...current, model: { ...current.model, scale } }));
   }
 
@@ -867,7 +909,7 @@ function App() {
     if (loadState !== "ready") return;
     event.preventDefault();
     const factor = event.deltaY > 0 ? 0.92 : 1.08;
-    updateModelScale(Number((settings.model.scale * factor).toFixed(3)));
+    updateModelScale(Number((settings.model.scale * factor).toFixed(2)));
   }
 
   async function syncCanvasToFigmaFrame() {
@@ -882,6 +924,9 @@ function App() {
     if (!renderer || !scene || !camera || !modelRef.current) return;
 
     syncInFlightRef.current = true;
+    syncRevisionRef.current = revisionRef.current;
+    setSyncing(true);
+    setSyncError(false);
     setSyncStatus("Syncing preview...");
     const frameWidth = Math.max(1, targetFrame?.width ?? 720);
     const frameHeight = Math.max(1, targetFrame?.height ?? 480);
@@ -895,9 +940,12 @@ function App() {
     renderer.setSize(renderWidth, renderHeight, false);
     const previewEnvironment = scene.environment;
     try {
-      scene.environment = settings.environment.mode === "studio" ? exportEnvironmentRef.current : null;
-      renderer.render(scene, exportCamera);
-      scene.environment = previewEnvironment;
+      try {
+        scene.environment = settings.environment.mode === "studio" ? exportEnvironmentRef.current : null;
+        renderer.render(scene, exportCamera);
+      } finally {
+        scene.environment = previewEnvironment;
+      }
       const blob = await new Promise<Blob | null>((resolve) => {
         renderer.domElement.toBlob(resolve, "image/png");
       });
@@ -909,11 +957,17 @@ function App() {
         height: renderHeight,
         settings
       });
+      syncTimeoutRef.current = window.setTimeout(() => {
+        syncInFlightRef.current = false;
+        setSyncing(false);
+        setSyncError(true);
+        setSyncStatus("No response from Figma. Check your frame, then try syncing again.");
+      }, 10000);
     } catch (syncError) {
-      setSyncStatus(syncError instanceof Error ? syncError.message : "Sync failed. Try again.");
-    } finally {
-      scene.environment = previewEnvironment;
       syncInFlightRef.current = false;
+      setSyncing(false);
+      setSyncError(true);
+      setSyncStatus(syncError instanceof Error ? syncError.message : "Sync failed. Try again.");
     }
   }
 
@@ -1000,31 +1054,33 @@ function App() {
     try {
       const text = await file.text();
       setJsonDraft(text);
-      const parsed = JSON.parse(text) as ViewerSettings;
+      const parsed = parseViewerSettings(text, DEFAULT_SETTINGS);
       const importedSettings = {
         ...cloneSettings(parsed),
         fileName: settingsRef.current.fileName
       };
       applyImportedSettings(importedSettings);
       postPluginMessage("export-settings", { settings: importedSettings });
+      setJsonError(null);
       showToast("JSON imported.");
     } catch {
-      showToast("Invalid JSON file.");
+      setJsonError("This is not a valid viewer settings file. Import a JSON exported by this plugin. Your preview has not changed.");
     }
   }
 
   function applyJsonDraft() {
     try {
-      const parsed = JSON.parse(jsonDraft) as ViewerSettings;
+      const parsed = parseViewerSettings(jsonDraft, DEFAULT_SETTINGS);
       const nextSettings = {
         ...cloneSettings(parsed),
         fileName: settingsRef.current.fileName
       };
       applyImportedSettings(nextSettings);
       postPluginMessage("export-settings", { settings: nextSettings });
+      setJsonError(null);
       showToast("JSON applied.");
     } catch {
-      showToast("Invalid JSON.");
+      setJsonError("Invalid viewer settings. Check the JSON or import a file exported by this plugin. Your preview has not changed.");
     }
   }
 
@@ -1047,17 +1103,51 @@ function App() {
   }
 
   return (
-    <main className="shell">
-      {toast && <div className="toast">{toast.message}</div>}
+    <main className="shell"
+      onPointerDownCapture={(event) => {
+        if ((event.target as HTMLElement).closest('input[type="range"], .render-host')) historyGestureRef.current = { recorded: false };
+      }}
+      onPointerUp={() => { historyGestureRef.current = null; }}
+      onPointerCancel={() => { historyGestureRef.current = null; }}
+    >
+      {toast && <div className="toast" role="status">{toast.message}</div>}
       <section className="preview-pane">
+        <div className="model-toolbar">
+          <div className="section-title"><span>1. Load a model</span><span className="local-badge">Local only</span></div>
+          <input
+            ref={fileInputRef}
+            type="file"
+            hidden
+            accept=".glb,model/gltf-binary"
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              if (file) void handleFile(file);
+              event.currentTarget.value = "";
+            }}
+          />
+          <div className="action-pair">
+            <button className={loadState === "ready" ? "" : "primary"} type="button" disabled={loadState === "loading" || syncing} onClick={() => fileInputRef.current?.click()}>
+              <FolderOpen size={16} />{loadState === "ready" ? "Replace GLB" : "Import GLB"}
+            </button>
+            <button type="button" disabled={loadState === "loading" || syncing} onClick={() => void loadSampleModel()}>Try sample model</button>
+          </div>
+          <div className="model-name" title={settings.fileName ?? undefined} role="status">
+            {loadState === "loading" ? "Loading model..." : settings.fileName ?? "No file needed to try the sample."}
+          </div>
+          {error && <div role="alert" className="status error">{error}</div>}
+        </div>
         <div className="section preview-section">
           <div className="section-title">
-            <span>Preview</span>
+            <span>2. Adjust the preview</span>
+            <div className="history-actions">
+              <button className="icon-button" type="button" aria-label="Undo" title="Undo" onClick={undoSettings} disabled={!canUndo || loadState === "loading"}><Undo2 size={16} /></button>
+              <button className="icon-button" type="button" aria-label="Redo" title="Redo" onClick={redoSettings} disabled={!canRedo || loadState === "loading"}><Redo2 size={16} /></button>
+            </div>
           </div>
+          <div className="preview-stage" aria-busy={loadState === "loading"} style={{ "--preview-aspect-ratio": previewAspectRatio } as React.CSSProperties}>
           <div
             className="render-host"
             ref={mountRef}
-            style={{ "--preview-aspect-ratio": previewAspectRatio } as React.CSSProperties}
             onPointerDown={handlePreviewPointerDown}
             onPointerMove={handlePreviewPointerMove}
             onPointerUp={handlePreviewPointerEnd}
@@ -1071,88 +1161,68 @@ function App() {
               </div>
             )}
           </div>
+          </div>
+          <p className="hint">Drag to rotate · Scroll to scale · Use Position for precise adjustments</p>
         </div>
 
-        <div className="section">
+        <div className="section sync-section">
           <div className="section-title">
-            <span>Target Frame</span>
+            <span>3. Send to Figma</span>
             <Image size={16} />
           </div>
-          <div className="target-frame">
+          <div className={targetFrame ? "target-frame" : "target-frame target-empty"}>
             <strong>{targetFrame?.name ?? "No frame selected"}</strong>
             <span>
               {targetFrame ? `${Math.round(targetFrame.width)} x ${Math.round(targetFrame.height)}` : "Select an existing frame, or create a new one below."}
             </span>
           </div>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".glb,model/gltf-binary"
-            onChange={(event) => {
-              const file = event.target.files?.[0];
-              if (file) void handleFile(file);
-            }}
-          />
           <div className="action-pair">
-            <button type="button" disabled={loadState === "loading"} onClick={() => fileInputRef.current?.click()}>
-              <FolderOpen size={16} />
-              Import GLB
-            </button>
-            <button type="button" disabled={loadState === "loading"} onClick={() => void loadSampleModel()}>
-              Try sample model
-            </button>
-          </div>
-          <div role="status" className={loadState === "error" ? "status error" : "status"}>
-            {loadState === "idle" && (settings.fileName || "No GLB loaded")}
-            {loadState === "loading" && "Loading GLB..."}
-            {loadState === "ready" && `${settings.fileName} loaded. ${syncStatus}`}
-            {loadState === "error" && (error || "Unable to load this GLB file.")}
-          </div>
-          <div className="action-pair">
-            <button type="button" onClick={() => postPluginMessage("use-selected-frame")}>
+            <button type="button" disabled={syncing} onClick={() => { setSyncPreview(false); postPluginMessage("use-selected-frame"); }}>
               <Image size={16} />
               Use Selected Frame
             </button>
-            <button type="button" onClick={() => postPluginMessage("create-frame")}>
+            <button type="button" disabled={syncing} onClick={() => { setSyncPreview(false); postPluginMessage("create-frame"); }}>
               Create New Frame
             </button>
           </div>
-          <button type="button" disabled={loadState !== "ready" || !targetFrame} onClick={() => void syncCanvasToFigmaFrame()}>
+          <button className="primary" type="button" disabled={loadState !== "ready" || !targetFrame || syncing} onClick={() => void syncCanvasToFigmaFrame()}>
             <Image size={16} />
-            Sync Frame
+            {syncing ? "Syncing..." : "Sync Frame"}
           </button>
           <label className="check-row">
-            <span>Live sync</span>
+            <span>Live sync <small>Sync replaces the frame fill with a PNG.</small></span>
             <input
               type="checkbox"
               checked={syncPreview}
+              disabled={loadState !== "ready" || !targetFrame || syncing}
               onChange={(event) => {
                 setSyncPreview(event.target.checked);
-                if (event.target.checked) window.setTimeout(() => void syncCanvasToFigmaFrame(), 120);
               }}
             />
           </label>
+          <div role="status" className={syncError ? "sync-feedback error" : "sync-feedback"}>
+            {loadState !== "ready" ? "Load a model to enable sync." : !targetFrame ? "Choose or create a frame to enable sync." : syncStatus}
+          </div>
         </div>
       </section>
 
-      <aside className="controls-pane">
-        <div className="section">
+      <aside className="controls-pane" aria-label="Preview settings">
+        <nav className="settings-nav" aria-label="Settings categories">
+          {[["look", "Look"], ["position", "Position"], ["light", "Light"], ["more", "More"]].map(([id, label]) => (
+            <button key={id} type="button" aria-pressed={activePanel === id} onClick={() => setActivePanel(id)}>{label}</button>
+          ))}
+        </nav>
+        <div className="controls-content" data-active={activePanel} key={activePanel}>
+        <div className="section" data-panel="more">
           <div className="section-title">
             <span>Window</span>
-            <div className="history-actions">
-              <button className="icon-button" type="button" title="Undo" onClick={undoSettings} disabled={!canUndo}>
-                <Undo2 size={16} />
-              </button>
-              <button className="icon-button" type="button" title="Redo" onClick={redoSettings} disabled={!canRedo}>
-                <Redo2 size={16} />
-              </button>
-            </div>
           </div>
           <div className="segmented-control segmented-control-wide">
             {WINDOW_PRESETS.map((item) => (
               <button
                 key={item.mode}
                 type="button"
+                aria-pressed={windowPreset === item.mode}
                 className={windowPreset === item.mode ? "segment active" : "segment"}
                 onClick={() => resizeWindow(item.mode)}
               >
@@ -1165,7 +1235,7 @@ function App() {
           </div>
         </div>
 
-        <div className="section">
+        <div className="section" data-panel="look">
           <div className="section-title">
             <span>Background</span>
           </div>
@@ -1174,6 +1244,7 @@ function App() {
               <button
                 key={item.mode}
                 type="button"
+                aria-pressed={settings.renderer.backgroundMode === item.mode}
                 className={settings.renderer.backgroundMode === item.mode ? "preset active" : "preset"}
                 onClick={() => updateBackground(item.mode)}
               >
@@ -1187,9 +1258,9 @@ function App() {
           </div>
         </div>
 
-        <div className="section">
+        <div className="section" data-panel="look">
           <div className="section-title">
-            <span>GLB Floor</span>
+            <span>Model floor</span>
           </div>
           <label className="check-row">
             <span>Show model floor / shadow</span>
@@ -1199,9 +1270,10 @@ function App() {
               onChange={(event) => updateFloorVisibility(event.target.checked)}
             />
           </label>
+          <p className="hint">Shows or hides floor meshes already in your GLB. Does not add a new floor.</p>
         </div>
 
-        <div className="section">
+        <div className="section" data-panel="look">
           <div className="section-title">
             <span>Renderer</span>
             <Layers size={16} />
@@ -1215,6 +1287,7 @@ function App() {
               max="3"
               step="0.05"
               value={settings.renderer.toneMappingExposure}
+              aria-label="Exposure"
               onChange={(event) => {
                 const toneMappingExposure = Number(event.target.value);
                 setSettings((current) => ({
@@ -1239,7 +1312,7 @@ function App() {
           </label>
         </div>
 
-        <div className="section">
+        <div className="section" data-panel="light">
           <div className="section-title">
             <span>Environment</span>
           </div>
@@ -1248,6 +1321,7 @@ function App() {
               <button
                 key={mode}
                 type="button"
+                aria-pressed={settings.environment.mode === mode}
                 className={settings.environment.mode === mode ? "segment active" : "segment"}
                 onClick={() => {
                   setSettings((current) => ({
@@ -1265,10 +1339,12 @@ function App() {
             <output>{settings.environment.intensity.toFixed(2)}</output>
             <input
               type="range"
+              disabled={settings.environment.mode === "none"}
               min="0"
               max="3"
               step="0.05"
               value={settings.environment.intensity}
+              aria-label="Environment intensity"
               onChange={(event) => {
                 const intensity = Number(event.target.value);
                 setSettings((current) => ({
@@ -1280,7 +1356,7 @@ function App() {
           </label>
         </div>
 
-        <div className="section">
+        <div className="section material-section" data-panel="look">
           <div className="section-title">
             <span>Material View</span>
             <Palette size={16} />
@@ -1290,6 +1366,7 @@ function App() {
               <button
                 key={item.mode}
                 type="button"
+                aria-pressed={settings.material.mode === item.mode}
                 className={settings.material.mode === item.mode ? "preset active" : "preset"}
                 onClick={() => {
                   setSettings((current) => ({
@@ -1304,22 +1381,20 @@ function App() {
           </div>
         </div>
 
-        <div className="section">
+        <div className="section" data-panel="position">
           <div className="section-title">
             <span>Model</span>
-            <button className="icon-button" type="button" title="Reset settings" onClick={resetSettings}>
-              <RotateCcw size={16} />
-            </button>
           </div>
           <label>
             <span>Scale</span>
             <output>{settings.model.scale.toFixed(2)}x</output>
             <input
               type="range"
-              min="0"
+              min="0.1"
               max="50"
-              step="0.1"
+              step="0.01"
               value={settings.model.scale}
+              aria-label="Scale"
               onChange={(event) => {
                 updateModelScale(Number(event.target.value));
               }}
@@ -1335,6 +1410,7 @@ function App() {
                 max="180"
                 step="1"
                 value={settings.model.rotation[axis]}
+                aria-label={`Rotate ${axis.toUpperCase()}`}
                 onChange={(event) => {
                   updateModelRotation(axis, Number(event.target.value));
                 }}
@@ -1343,7 +1419,7 @@ function App() {
           ))}
         </div>
 
-        <div className="section">
+        <div className="section" data-panel="position">
           <div className="section-title">
             <span>Camera</span>
           </div>
@@ -1356,6 +1432,7 @@ function App() {
               max="90"
               step="1"
               value={settings.fov}
+              aria-label="Field of view"
               onChange={(event) => {
                 const fov = clamp(Number(event.target.value), 15, 90);
                 setSettings((current) => ({ ...current, fov }));
@@ -1376,7 +1453,7 @@ function App() {
           </div>
         </div>
 
-        <div className="section">
+        <div className="section" data-panel="light">
           <div className="section-title">
             <span>Light</span>
             <Sun size={16} />
@@ -1390,6 +1467,7 @@ function App() {
               max="8"
               step="0.1"
               value={settings.light.intensity}
+              aria-label="Key intensity"
               onChange={(event) => {
                 const intensity = Number(event.target.value);
                 setSettings((current) => ({ ...current, light: { ...current.light, intensity } }));
@@ -1416,6 +1494,7 @@ function App() {
                 max="10"
                 step="0.1"
                 value={settings.light.position[axis]}
+                aria-label={`Key ${axis.toUpperCase()}`}
                 onChange={(event) => updateLightAxis(axis, Number(event.target.value))}
               />
             </label>
@@ -1429,6 +1508,7 @@ function App() {
               max="4"
               step="0.1"
               value={settings.ambientLight.intensity}
+              aria-label="Ambient intensity"
               onChange={(event) => {
                 const intensity = Number(event.target.value);
                 setSettings((current) => ({ ...current, ambientLight: { intensity } }));
@@ -1457,6 +1537,8 @@ function App() {
               max="4"
               step="0.1"
               value={settings.hemisphereLight.intensity}
+              aria-label="Hemisphere intensity"
+              disabled={!settings.hemisphereLight.enabled}
               onChange={(event) => {
                 const intensity = Number(event.target.value);
                 setSettings((current) => ({
@@ -1472,6 +1554,7 @@ function App() {
               <input
                 type="color"
                 value={settings.hemisphereLight.skyColor}
+                disabled={!settings.hemisphereLight.enabled}
                 onChange={(event) => {
                   setSettings((current) => ({
                     ...current,
@@ -1485,6 +1568,7 @@ function App() {
               <input
                 type="color"
                 value={settings.hemisphereLight.groundColor}
+                disabled={!settings.hemisphereLight.enabled}
                 onChange={(event) => {
                   setSettings((current) => ({
                     ...current,
@@ -1516,6 +1600,8 @@ function App() {
               max="6"
               step="0.1"
               value={settings.fillLight.intensity}
+              aria-label="Fill intensity"
+              disabled={!settings.fillLight.enabled}
               onChange={(event) => {
                 const intensity = Number(event.target.value);
                 setSettings((current) => ({ ...current, fillLight: { ...current.fillLight, intensity } }));
@@ -1527,6 +1613,7 @@ function App() {
             <input
               type="color"
               value={settings.fillLight.color}
+              disabled={!settings.fillLight.enabled}
               onChange={(event) => {
                 setSettings((current) => ({ ...current, fillLight: { ...current.fillLight, color: event.target.value } }));
               }}
@@ -1542,6 +1629,8 @@ function App() {
                 max="10"
                 step="0.1"
                 value={settings.fillLight.position[axis]}
+                aria-label={`Fill ${axis.toUpperCase()}`}
+                disabled={!settings.fillLight.enabled}
                 onChange={(event) => updateFillLightAxis(axis, Number(event.target.value))}
               />
             </label>
@@ -1568,6 +1657,8 @@ function App() {
               max="6"
               step="0.1"
               value={settings.rimLight.intensity}
+              aria-label="Rim intensity"
+              disabled={!settings.rimLight.enabled}
               onChange={(event) => {
                 const intensity = Number(event.target.value);
                 setSettings((current) => ({ ...current, rimLight: { ...current.rimLight, intensity } }));
@@ -1579,6 +1670,7 @@ function App() {
             <input
               type="color"
               value={settings.rimLight.color}
+              disabled={!settings.rimLight.enabled}
               onChange={(event) => {
                 setSettings((current) => ({ ...current, rimLight: { ...current.rimLight, color: event.target.value } }));
               }}
@@ -1594,13 +1686,15 @@ function App() {
                 max="10"
                 step="0.1"
                 value={settings.rimLight.position[axis]}
+                aria-label={`Rim ${axis.toUpperCase()}`}
+                disabled={!settings.rimLight.enabled}
                 onChange={(event) => updateRimLightAxis(axis, Number(event.target.value))}
               />
             </label>
           ))}
         </div>
 
-        <div className="section">
+        <div className="section" data-panel="light">
           <div className="section-title">
             <span>Atmosphere</span>
             <CloudFog size={16} />
@@ -1623,6 +1717,7 @@ function App() {
             <input
               type="color"
               value={settings.fog.color}
+              disabled={!settings.fog.enabled}
               onChange={(event) => {
                 setSettings((current) => ({ ...current, fog: { ...current.fog, color: event.target.value } }));
               }}
@@ -1637,6 +1732,8 @@ function App() {
               max="20"
               step="0.1"
               value={settings.fog.near}
+              aria-label="Fog near"
+              disabled={!settings.fog.enabled}
               onChange={(event) => {
                 const near = Number(event.target.value);
                 setSettings((current) => ({
@@ -1655,6 +1752,8 @@ function App() {
               max="40"
               step="0.1"
               value={settings.fog.far}
+              aria-label="Fog far"
+              disabled={!settings.fog.enabled}
               onChange={(event) => {
                 const far = Number(event.target.value);
                 setSettings((current) => ({
@@ -1666,11 +1765,12 @@ function App() {
           </label>
         </div>
 
-        <div className="section export-section">
+        <div className="section export-section" data-panel="more">
           <div className="section-title">
-            <span>Export</span>
+            <span>Settings JSON</span>
             <FileJson size={16} />
           </div>
+          <p className="hint">Save or reuse your settings. This does not export the 3D model or a PNG.</p>
           <input
             ref={jsonInputRef}
             type="file"
@@ -1682,6 +1782,9 @@ function App() {
             }}
           />
           <textarea
+            aria-label="Settings JSON"
+            aria-invalid={!!jsonError}
+            aria-describedby={jsonError ? "json-error" : undefined}
             value={jsonDraft}
             onChange={(event) => setJsonDraft(event.target.value)}
             onKeyDown={(event) => {
@@ -1691,6 +1794,7 @@ function App() {
               }
             }}
           />
+          {jsonError && <div id="json-error" role="alert" className="status error">{jsonError}</div>}
           <div className="export-actions">
             <button type="button" onClick={copyJson}>
               <FileJson size={16} />
@@ -1709,6 +1813,12 @@ function App() {
               Download
             </button>
           </div>
+        </div>
+        <div className="section" data-panel="more">
+          <div className="section-title">Reset all adjustments</div>
+          <p className="hint">Resets position, camera, lighting and appearance. Keeps your model and target frame. Undo is available.</p>
+          <button type="button" onClick={resetSettings}><RotateCcw size={16} />Reset all settings</button>
+        </div>
         </div>
       </aside>
       <button
