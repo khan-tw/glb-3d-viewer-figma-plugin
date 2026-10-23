@@ -4,11 +4,23 @@ Preview local `.glb` files inside a Figma plugin, tune WebGL / Three.js renderin
 
 [Open in Figma Community](https://www.figma.com/community/plugin/1689584566677007084)
 
+![Import a GLB and bring its render into your Figma frame](assets/promotion/01-cover-1920x1080.png)
+
+Create product presentations and explore camera angles, materials, and lighting
+without leaving Figma. Free, open source, and processed locally.
+
 ## Use in Figma
 
 1. Open the [Community plugin page](https://www.figma.com/community/plugin/1689584566677007084) and choose **Open in Figma**.
-2. Select a Figma frame and run **GLB 3D Frame Preview**.
-3. Load a local `.glb` file, adjust the view and lighting, and sync the render to your frame.
+2. Run **GLB 3D Frame Preview** and choose **Try sample model**, or import a local `.glb` file.
+3. Choose **Create New Frame**, or select a frame and choose **Use Selected Frame**.
+4. Adjust the view and lighting, then choose **Sync Frame**. Live sync updates it as you work.
+
+Version 1.1.0 is available as Community Version 2, published October 23, 2026.
+Sync replaces the target frame's fills; use a dedicated frame for the render.
+
+[Download the original sample model](examples/studio-headphones.glb) and follow
+the [sample walkthrough](examples/README.md).
 
 No account or API key is required by the plugin. Models are processed locally.
 
@@ -106,6 +118,7 @@ The Figma canvas preview is a synchronized PNG render. Figma plugin APIs do not 
 npm install
 npm run typecheck
 npm run build
+npm test
 ```
 
 The Figma manifest points to the built files in `dist/`.
@@ -118,7 +131,7 @@ Use GitHub issues for bug reports and feature requests:
 
 ## Privacy
 
-This plugin does not make external network requests. It works with local `.glb` files selected by the user, reads the currently selected Figma frame when syncing a preview, and stores the last exported settings in Figma client storage.
+This plugin does not make external network requests. It works with local `.glb` files. Sync writes a rendered PNG and viewer settings (including the file name) into your Figma document; that content follows the document's sharing permissions. Exported settings are also saved in Figma client storage. The original GLB is not uploaded.
 
 Full details are available in `PRIVACY.md`.
 

@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 
 export default defineConfig({
   base: "./",
+  assetsInclude: ["**/*.glb"],
   plugins: [react(), viteSingleFile()],
   build: {
     outDir: "dist",

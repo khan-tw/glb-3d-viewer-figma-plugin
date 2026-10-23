@@ -8,6 +8,7 @@ import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment
 import dracoDecoderSource from "three/examples/jsm/libs/draco/gltf/draco_decoder.js?raw";
 import type { ViewerSettings } from "./types";
 import "./styles.css";
+import sampleModelUrl from "../examples/studio-headphones.glb?inline";
 
 type WindowPreset = "compact" | "default" | "wide" | "custom";
 
@@ -203,6 +204,7 @@ function App() {
   const [settings, setSettingsState] = useState<ViewerSettings>(DEFAULT_SETTINGS);
   const [loadState, setLoadState] = useState<LoadState>("idle");
   const [error, setError] = useState<string | null>(null);
+  const [syncStatus, setSyncStatus] = useState("Preview ready. Choose a frame to sync.");
   const [syncPreview, setSyncPreview] = useState(true);
   const [targetFrame, setTargetFrame] = useState<{ name: string; width: number; height: number } | null>(null);
   const [windowPreset, setWindowPreset] = useState<WindowPreset>("default");
@@ -249,6 +251,7 @@ function App() {
 
     settingsRef.current = cloneSettings(next);
     setSettingsState(next);
+    setSyncStatus("Preview changed. Sync to update your frame.");
     syncHistoryAvailability();
   }
 
@@ -317,6 +320,10 @@ function App() {
       const message = event.data?.pluginMessage;
       if (message?.type === "target-frame") {
         setTargetFrame(message.frame);
+        setSyncStatus(message.frame ? "Frame selected. Ready to sync." : "Choose or create a frame to sync.");
+      }
+      if (message?.type === "sync-result") {
+        setSyncStatus(message.ok ? `Synced to ${message.frameName}.` : message.error);
       }
     };
 
@@ -556,7 +563,13 @@ function App() {
     syncTimerRef.current = window.setTimeout(() => {
       void syncCanvasToFigmaFrame();
     }, 180);
-  }, [settings, syncPreview, loadState]);
+  }, [settings, syncPreview, loadState, targetFrame]);
+
+  async function loadSampleModel() {
+    const base64 = sampleModelUrl.split(",")[1];
+    const bytes = Uint8Array.from(atob(base64), (char) => char.charCodeAt(0));
+    await handleFile(new File([bytes], "studio-headphones.glb", { type: "model/gltf-binary" }));
+  }
 
   async function handleFile(file: File) {
     const scene = sceneRef.current;
@@ -565,6 +578,7 @@ function App() {
 
     setLoadState("loading");
     setError(null);
+    setSyncStatus("Preview ready. Choose Sync Frame to update your frame.");
 
     if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
     objectUrlRef.current = URL.createObjectURL(file);
@@ -612,8 +626,6 @@ function App() {
       setLoadState("ready");
       postPluginMessage("notify", { text: `Loaded ${file.name}` });
       dracoLoader.dispose();
-      window.setTimeout(() => void syncCanvasToFigmaFrame(), 120);
-      window.setTimeout(() => void syncCanvasToFigmaFrame(), 700);
     } catch (loadError) {
       setLoadState("error");
       setError(loadError instanceof Error ? loadError.message : "Unable to load this GLB file.");
@@ -860,12 +872,17 @@ function App() {
 
   async function syncCanvasToFigmaFrame() {
     if (syncInFlightRef.current) return;
+    if (!targetFrame) {
+      setSyncStatus("Choose or create a frame to sync.");
+      return;
+    }
     const renderer = exportRendererRef.current;
     const scene = sceneRef.current;
     const camera = cameraRef.current;
     if (!renderer || !scene || !camera || !modelRef.current) return;
 
     syncInFlightRef.current = true;
+    setSyncStatus("Syncing preview...");
     const frameWidth = Math.max(1, targetFrame?.width ?? 720);
     const frameHeight = Math.max(1, targetFrame?.height ?? 480);
     const longestSide = Math.max(frameWidth, frameHeight);
@@ -884,7 +901,7 @@ function App() {
       const blob = await new Promise<Blob | null>((resolve) => {
         renderer.domElement.toBlob(resolve, "image/png");
       });
-      if (!blob) return;
+      if (!blob) throw new Error("Could not render the preview. Try again.");
       const bytes = await blobToBytes(blob);
       postPluginMessage("render-preview", {
         bytes: bytes.buffer,
@@ -892,6 +909,8 @@ function App() {
         height: renderHeight,
         settings
       });
+    } catch (syncError) {
+      setSyncStatus(syncError instanceof Error ? syncError.message : "Sync failed. Try again.");
     } finally {
       scene.environment = previewEnvironment;
       syncInFlightRef.current = false;
@@ -1047,7 +1066,8 @@ function App() {
           >
             {loadState !== "ready" && (
               <div className="preview-empty">
-                {loadState === "loading" ? "Loading GLB..." : "Import a GLB to preview"}
+                <strong>{loadState === "loading" ? "Loading GLB..." : "Your next product shot starts here"}</strong>
+                {loadState !== "loading" && <span>Import a GLB, or explore with the built-in sample.</span>}
               </div>
             )}
           </div>
@@ -1061,7 +1081,7 @@ function App() {
           <div className="target-frame">
             <strong>{targetFrame?.name ?? "No frame selected"}</strong>
             <span>
-              {targetFrame ? `${Math.round(targetFrame.width)} x ${Math.round(targetFrame.height)}` : "Select one frame, then run the plugin."}
+              {targetFrame ? `${Math.round(targetFrame.width)} x ${Math.round(targetFrame.height)}` : "Select an existing frame, or create a new one below."}
             </span>
           </div>
           <input
@@ -1073,27 +1093,31 @@ function App() {
               if (file) void handleFile(file);
             }}
           />
-          <button type="button" onClick={() => fileInputRef.current?.click()}>
-            <FolderOpen size={16} />
-            Import GLB
-          </button>
-          <div className={loadState === "error" ? "status error" : "status"}>
+          <div className="action-pair">
+            <button type="button" disabled={loadState === "loading"} onClick={() => fileInputRef.current?.click()}>
+              <FolderOpen size={16} />
+              Import GLB
+            </button>
+            <button type="button" disabled={loadState === "loading"} onClick={() => void loadSampleModel()}>
+              Try sample model
+            </button>
+          </div>
+          <div role="status" className={loadState === "error" ? "status error" : "status"}>
             {loadState === "idle" && (settings.fileName || "No GLB loaded")}
             {loadState === "loading" && "Loading GLB..."}
-            {loadState === "ready" && `${settings.fileName} is synced to the target frame.`}
+            {loadState === "ready" && `${settings.fileName} loaded. ${syncStatus}`}
             {loadState === "error" && (error || "Unable to load this GLB file.")}
           </div>
-          <button
-            type="button"
-            onClick={() => {
-              postPluginMessage("use-selected-frame");
-              window.setTimeout(() => void syncCanvasToFigmaFrame(), 120);
-            }}
-          >
-            <Image size={16} />
-            Use Selected Frame
-          </button>
-          <button type="button" onClick={() => void syncCanvasToFigmaFrame()}>
+          <div className="action-pair">
+            <button type="button" onClick={() => postPluginMessage("use-selected-frame")}>
+              <Image size={16} />
+              Use Selected Frame
+            </button>
+            <button type="button" onClick={() => postPluginMessage("create-frame")}>
+              Create New Frame
+            </button>
+          </div>
+          <button type="button" disabled={loadState !== "ready" || !targetFrame} onClick={() => void syncCanvasToFigmaFrame()}>
             <Image size={16} />
             Sync Frame
           </button>

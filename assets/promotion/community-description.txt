@@ -1,0 +1,25 @@
+Turn a local GLB model into a polished image in your Figma frame.
+
+Explore product shots, presentation visuals and interface mockups with adjustable camera angles, lighting, materials and backgrounds. Your model is processed locally. No plugin account, API key or external network access is required.
+
+TRY IT WITHOUT FINDING A MODEL
+1. Run the plugin and choose Try sample model.
+2. Choose Create New Frame, or select a frame and choose Use Selected Frame.
+3. Drag to rotate, adjust the look, and choose Sync Frame. Leave Live sync on to update the image as you work.
+
+BRING YOUR OWN GLB
+Import local GLB files, including Draco-compressed models. Adjust rotation, scale, camera FOV, exposure, studio lighting, fog and backgrounds. Compare original, clay, normal and wireframe material views. Hide model floor or shadow meshes when needed.
+
+FROM EXPLORATION TO HANDOFF
+Sync a PNG render to your selected Figma frame, with output up to 1600 pixels on the longest side. Copy, import or download JSON settings to reproduce a look or discuss rendering choices with your developer.
+
+WHAT TO EXPECT
+The frame receives a rendered image, not an interactive 3D object. The plugin does not create models or export GLB files. Live sync replaces the target frame's image fill, so use a dedicated frame for your render.
+
+WHAT'S NEW
+An included original headphone model, one-click frame creation, clearer sync feedback, and a more compact workflow.
+
+Sample model and walkthrough: https://github.com/khan-tw/glb-3d-viewer-figma-plugin/tree/main/examples
+Support: https://github.com/khan-tw/glb-3d-viewer-figma-plugin/issues
+Privacy: https://github.com/khan-tw/glb-3d-viewer-figma-plugin/blob/main/PRIVACY.md
+Source code (MIT): https://github.com/khan-tw/glb-3d-viewer-figma-plugin
