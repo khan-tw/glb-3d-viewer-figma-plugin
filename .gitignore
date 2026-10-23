@@ -15,3 +15,10 @@ node_modules
 
 # Local release candidates; publish only after review.
 releases/
+
+# Unapproved promotional drafts stay local.
+assets/promotion/social-posts.md
+assets/promotion/demo-v2/
+assets/promotion/workflow-demo-1080p.mp4
+assets/promotion/*-draft.txt
+scripts/create-demo-film.mjs
