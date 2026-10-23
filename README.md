@@ -1,8 +1,18 @@
-# GLB 3D Viewer Figma Plugin
+# GLB 3D Frame Preview
 
 Preview local `.glb` files inside a Figma plugin, tune WebGL / Three.js rendering parameters, and sync the current render into a selected Figma frame.
 
+[Open in Figma Community](https://www.figma.com/community/plugin/1689584566677007084)
+
 ## Use in Figma
+
+1. Open the [Community plugin page](https://www.figma.com/community/plugin/1689584566677007084) and choose **Open in Figma**.
+2. Select a Figma frame and run **GLB 3D Frame Preview**.
+3. Load a local `.glb` file, adjust the view and lighting, and sync the render to your frame.
+
+No account or API key is required by the plugin. Models are processed locally.
+
+### Run From Source
 
 1. Open Figma Desktop.
 2. Go to Plugins > Development > Import plugin from manifest.
