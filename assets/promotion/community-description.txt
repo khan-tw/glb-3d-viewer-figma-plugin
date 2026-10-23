@@ -3,21 +3,27 @@ Turn a local GLB model into a polished image in your Figma frame.
 Explore product shots, presentation visuals and interface mockups with adjustable camera angles, lighting, materials and backgrounds. Your model is processed locally. No plugin account, API key or external network access is required.
 
 TRY IT WITHOUT FINDING A MODEL
-1. Run the plugin and choose Try sample model.
-2. Choose Create New Frame, or select a frame and choose Use Selected Frame.
-3. Drag to rotate, adjust the look, and choose Sync Frame. Leave Live sync on to update the image as you work.
+1. Load a model: choose Try sample model, or import your own GLB.
+2. Adjust the preview: use Look for backgrounds and materials, Position for angle and scale, and Light for lighting.
+3. Send to Figma: choose Create New Frame or Use Selected Frame, then Sync Frame.
+
+Live sync is optional and off by default. Turn it on when you want automatic updates. Changing the target frame turns it off again. Both manual and live sync replace the target frame's fills, so use a dedicated frame.
+
+TRY THE PUBLIC PLAYGROUND
+Duplicate the playground into your drafts for editable instructions, real rendering examples and a separate practice frame:
+https://www.figma.com/design/CxW8FvI0JErG3TNxrc3YGm/GLB-3D-Frame-Preview---Playground?node-id=1-5
 
 BRING YOUR OWN GLB
-Import local GLB files, including Draco-compressed models. Adjust rotation, scale, camera FOV, exposure, studio lighting, fog and backgrounds. Compare original, clay, normal and wireframe material views. Hide model floor or shadow meshes when needed.
+Import local GLB files, including Draco-compressed models. Adjust rotation, scale, camera FOV, exposure, studio lighting, fog and backgrounds. Compare original, clay, normal and wireframe material views. Show or hide floor meshes already present in your model; the plugin does not create a new floor.
 
 FROM EXPLORATION TO HANDOFF
-Sync a PNG render to your selected Figma frame, with output up to 1600 pixels on the longest side. Copy, import or download JSON settings to reproduce a look or discuss rendering choices with your developer.
+Sync a PNG render to your Figma frame, with output up to 1600 pixels on the longest side. Under More, copy, import or download JSON settings to reproduce a look or discuss rendering choices. Settings JSON does not contain the 3D model or export an image.
 
 WHAT TO EXPECT
-The frame receives a rendered image, not an interactive 3D object. The plugin does not create models or export GLB files. Live sync replaces the target frame's image fill, so use a dedicated frame for your render.
+Your Figma frame receives a rendered PNG, not an interactive 3D layer. The plugin does not create models or export GLB files. Your original GLB stays local; synced images and settings follow your Figma document's sharing permissions.
 
-WHAT'S NEW
-An included original headphone model, one-click frame creation, clearer sync feedback, and a more compact workflow.
+WHAT'S NEW IN 1.2
+A clearer three-step workflow, grouped settings, a visible Sync Frame action, opt-in live sync, one-drag undo and safer preset import. Invalid model replacements keep the previous preview so you can recover without starting over.
 
 Sample model and walkthrough: https://github.com/khan-tw/glb-3d-viewer-figma-plugin/tree/main/examples
 Support: https://github.com/khan-tw/glb-3d-viewer-figma-plugin/issues

@@ -16,8 +16,7 @@ without leaving Figma. Free, open source, and processed locally.
 3. Choose **Create New Frame**, or select a frame and choose **Use Selected Frame**.
 4. Adjust the view and lighting, then choose **Sync Frame**. Enable **Live sync** if you want automatic updates while you work.
 
-Version 1.2.0 is the current source release. The Community update is pending;
-its public page currently offers 1.1.0 as Community Version 2.
+Version 1.2.0 is available as Community Version 3, published October 23, 2026.
 Sync replaces the target frame's fills; use a dedicated frame for the render.
 
 ### What's New in 1.2

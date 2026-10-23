@@ -2,6 +2,8 @@
 
 ## 1.2.0 - October 23, 2026
 
+Published as Community Version 3 and GitHub release v1.2.0.
+
 - Guide first use through Load a model, Adjust the preview, and Send to Figma.
 - Keep the main sync action visible in default and compact window sizes.
 - Group controls into Look, Position, Light, and More.
